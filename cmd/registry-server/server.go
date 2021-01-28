@@ -95,8 +95,10 @@ func main() {
 	if err != nil {
 		klog.Fatalf("FATAL: cannot initialize Kubernetes client: %s", err.Error())
 	}
-	controller, err := epwatcher.Endpointswatcher(clientset)
-	defer close(controller.StopChan)
+	indexInformer := epwatcher.CreateIndexInformer(clientset)
+	stop := make(chan struct{})
+	defer close(stop)
+	go (*indexInformer).Run(stop)
 
 	log.Printf("listening for requests on localhost%s ...\n", port)
 	lis, err := net.Listen("tcp", port)
