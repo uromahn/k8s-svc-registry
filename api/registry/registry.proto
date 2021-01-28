@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+option go_package = "api/registry";
+option java_multiple_files = true;
+option java_package = "com.box.k8ssvcregistry.api.registry";
+option java_outer_classname = "SvcRegistryProto";
+
+package registry;
+
+// The greeting service definition.
+service ServiceRegistry {
+    // Registers a service
+    rpc Register (ServiceInfo) returns (RegistrationResult) {}
+    // unregisters a service
+    rpc UnRegister (ServiceInfo) returns (RegistrationResult) {}
+}
+
+message NamedPort {
+    // The actual numerical listening port
+    int32 port = 1;
+    // The name of the port, e.g. "https"
+    string name = 2;
+}
+// The request message with the service info.
+message ServiceInfo {
+    // namespace the service is registered in
+    string namespace = 1;
+    // name of the service - this determines which namespace this service uses
+    string service_name = 2;
+    // DNS name of the service host not including subdomain or domain and no dots
+    string host_name = 3;
+    // IP address of that specific host name
+    string ipaddress = 4;
+    // Physical node name where the service instance is running.
+    // For bare metal or VM services, this may the the FQN of the service including the host_name
+    string node_name = 5;
+    // Array of named ports for the service
+    repeated NamedPort ports = 6;
+    // A weight this service instance should be given
+    // NOTE: this information may not be utilized by the consumer of this information
+    float weight = 7;
+}
+
+// The response message containing the result of the registration
+// In case of a successful registration, the input will be in the response.
+// If the registration failed, all values except for the status code and a reason
+// will be empty.
+message RegistrationResult {
+    // namespace the service is registered in
+    string namespace = 1;
+    // name of the service
+    string service_name = 2;
+    // IP address of that specific host name
+    string ipaddress = 3;
+    // Array of named ports for the service
+    repeated NamedPort ports = 4;
+    // Status code of the operation
+    // We will reuse the HTTP status code, e.g. a 201 will signal that the entry
+    // has been successfully created.
+    uint32 status = 5;
+    // Details message explaining the status
+    string status_details = 6;
+}
