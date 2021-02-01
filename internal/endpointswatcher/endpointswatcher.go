@@ -34,12 +34,26 @@ func CreateIndexInformer(clientset *kubernetes.Clientset) *cache.SharedIndexInfo
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				klog.Infof("endpoints added: %s \n", obj)
+				key := "test-dev/test"
+				item, exists, _ := sharedIndexInformer.GetIndexer().GetByKey(key)
+				if exists {
+					klog.Infof("found key %s with item %v in cache", key, item)
+				} else {
+					klog.Infof("No item with key %s found in cache", key)
+				}
 			},
 			DeleteFunc: func(obj interface{}) {
 				klog.Infof("endpoints deleted: %s \n", obj)
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
 				klog.Infof("endpoints changed:\n %s ->\n %s\n", oldObj, newObj)
+				key := "test-dev/test"
+				item, exists, _ := sharedIndexInformer.GetIndexer().GetByKey(key)
+				if exists {
+					klog.Infof("found key %s with item %v in cache", key, item)
+				} else {
+					klog.Infof("No item with key %s found in cache", key)
+				}
 			},
 		},
 	)

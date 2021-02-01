@@ -2,11 +2,13 @@ package kubeclient
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"k8s.io/klog/v2"
 
 	apiv1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -33,16 +35,21 @@ func InitKubeClient(kubeconfig *string) (*kubernetes.Clientset, error) {
 
 // GetOrCreateNamespace will try to get the namespace object named 'nsName', or
 // if it doesn't exist, will create it.
-func GetOrCreateNamespace(ctx context.Context, nsName string) (*apiv1.Namespace, error) {
+func GetOrCreateNamespace(ctx context.Context, nsName string, errorIfNotExist bool) (*apiv1.Namespace, error) {
 	// first try to get the namespace to see if it already exists
 	nsClient := clientset.CoreV1().Namespaces()
 	ns, err := nsClient.Get(ctx, nsName, metav1.GetOptions{})
 	if err == nil {
-		klog.Infof("INFO: namespace '%s' already exists.", nsName)
+		klog.Infof("INFO: namespace '%s' exists.", nsName)
 		// we have the namespace already, just return it
 		return ns, err
 	}
-	if errors.IsNotFound(err) {
+	if k8serrors.IsNotFound(err) {
+		if errorIfNotExist {
+			errMsg := fmt.Sprintf("namepace %s does not exist", nsName)
+			klog.Error(errMsg)
+			return nil, errors.New(errMsg)
+		}
 		// otherwise we need to create it
 		klog.Infof("INFO: creating namepsace '%s'", nsName)
 		nsMeta := createNamespaceSpec(nsName)
@@ -54,14 +61,19 @@ func GetOrCreateNamespace(ctx context.Context, nsName string) (*apiv1.Namespace,
 
 // GetOrCreateService will try to get a service with the name 'svcName'
 // in the namespace 'ns'. If it doesn't exist, it will create the object.
-func GetOrCreateService(ctx context.Context, ns string, svcName string, ports []*reg.NamedPort) (*apiv1.Service, error) {
+func GetOrCreateService(ctx context.Context, ns string, svcName string, ports []*reg.NamedPort, errorIfNotExist bool) (*apiv1.Service, error) {
 	svcClient := clientset.CoreV1().Services(ns)
 	svc, err := svcClient.Get(ctx, svcName, metav1.GetOptions{})
 	if err == nil {
-		klog.Infof("INFO: service '%s' in namespace '%s' already exists.", svcName, ns)
+		klog.Infof("INFO: service '%s' in namespace '%s' exists.", svcName, ns)
 		return svc, err
 	}
-	if errors.IsNotFound(err) {
+	if k8serrors.IsNotFound(err) {
+		if errorIfNotExist {
+			errMsg := fmt.Sprintf("service %s in namespace %s does not exist", svcName, ns)
+			klog.Error(errMsg)
+			return nil, errors.New(errMsg)
+		}
 		klog.Infof("INFO: creating service '%s' in namespace '%s' with named ports '%v'", svcName, ns, ports)
 		svcSpec := createServiceSpec(svcName, ns, ports)
 		svc, err = svcClient.Create(ctx, svcSpec, metav1.CreateOptions{})
@@ -93,7 +105,7 @@ func RegisterEndpoint(ctx context.Context, svcInfo *reg.ServiceInfo) (*reg.Regis
 	// before we do anything, we check if the service object actually exists
 	svcClient := clientset.CoreV1().Services(svcInfo.Namespace)
 	_, err := svcClient.Get(ctx, svcInfo.ServiceName, metav1.GetOptions{})
-	if errors.IsNotFound(err) {
+	if k8serrors.IsNotFound(err) {
 		klog.Errorf("ERROR: %v service %s in namespace %s does not exists! Cannot register endpoint for IP %s ports %v",
 			err, svcInfo.ServiceName, svcInfo.Namespace, svcInfo.Ipaddress, svcInfo.Ports)
 		result := newRegistrationResult(svcInfo, uint32(404), "service does not exist")
@@ -104,7 +116,7 @@ func RegisterEndpoint(ctx context.Context, svcInfo *reg.ServiceInfo) (*reg.Regis
 	ep, err := epClient.Get(ctx, svcInfo.ServiceName, metav1.GetOptions{})
 
 	// Case #1: no endpoint exists for the service yet
-	if errors.IsNotFound(err) {
+	if k8serrors.IsNotFound(err) {
 		// we don't have the endpoints object already, so we need to create it here
 		newEp := newEndpointsObj(ctx, svcInfo)
 		statusCode := uint32(200)
@@ -248,7 +260,7 @@ func UnregisterEndpoint(ctx context.Context, svcInfo *reg.ServiceInfo) (*reg.Reg
 	// check if the service object actually exists
 	svcClient := clientset.CoreV1().Services(svcInfo.Namespace)
 	_, err = svcClient.Get(ctx, svcInfo.ServiceName, metav1.GetOptions{})
-	if errors.IsNotFound(err) {
+	if k8serrors.IsNotFound(err) {
 		klog.Errorf("ERROR: %v service %s in namespace %s does not exists! Cannot unregister endpoint for IP %s ports %v",
 			err, svcInfo.ServiceName, svcInfo.Namespace, svcInfo.Ipaddress, svcInfo.Ports)
 		result = newRegistrationResult(svcInfo, uint32(404), "service does not exist")
@@ -259,7 +271,7 @@ func UnregisterEndpoint(ctx context.Context, svcInfo *reg.ServiceInfo) (*reg.Reg
 	ep, err := epClient.Get(ctx, svcInfo.ServiceName, metav1.GetOptions{})
 
 	// the endpoints object does not exist: respond with a "not found"
-	if errors.IsNotFound(err) {
+	if k8serrors.IsNotFound(err) {
 		statusCode := uint32(404)
 		statusDetails := "service endpoint not found"
 		result = newRegistrationResult(svcInfo, statusCode, statusDetails)
