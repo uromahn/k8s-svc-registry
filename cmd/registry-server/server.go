@@ -39,6 +39,7 @@ const (
 )
 
 type RegistrationMsg struct {
+	Ctx             context.Context
 	ResponseChannel chan ResultMsg
 	SvcInfo         *reg.ServiceInfo
 	Op              RegOperation
@@ -76,6 +77,7 @@ func register(ctx context.Context, svcInfo *reg.ServiceInfo) (*reg.RegistrationR
 	respChannel := make(chan ResultMsg)
 	// and the registration message
 	regMsg := RegistrationMsg{
+		Ctx:             ctx,
 		ResponseChannel: respChannel,
 		SvcInfo:         svcInfo,
 		Op:              Register,
@@ -84,6 +86,7 @@ func register(ctx context.Context, svcInfo *reg.ServiceInfo) (*reg.RegistrationR
 	registrationQueue.Add(regMsg)
 	// wait for the response
 	respMsg := <-respChannel
+	// we expect the worker to close the channel after the response has been sent
 	return respMsg.Result, respMsg.Err
 }
 
@@ -103,6 +106,7 @@ func unRegister(ctx context.Context, svcInfo *reg.ServiceInfo) (*reg.Registratio
 	respChannel := make(chan ResultMsg)
 	// and the registration message
 	regMsg := RegistrationMsg{
+		Ctx:             ctx,
 		ResponseChannel: respChannel,
 		SvcInfo:         svcInfo,
 		Op:              Unregister,
@@ -111,6 +115,7 @@ func unRegister(ctx context.Context, svcInfo *reg.ServiceInfo) (*reg.Registratio
 	registrationQueue.Add(regMsg)
 	// wait for the response
 	respMsg := <-respChannel
+	// we expect the worker to close the channel after the response has been sent
 	return respMsg.Result, respMsg.Err
 }
 

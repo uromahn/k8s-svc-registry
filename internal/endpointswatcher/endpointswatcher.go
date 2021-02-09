@@ -3,7 +3,7 @@ package endpointswatcher
 import (
 	"k8s.io/klog/v2"
 
-	v1 "k8s.io/api/core/v1"
+	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -19,12 +19,12 @@ func CreateIndexInformer(clientset *kubernetes.Clientset) *cache.SharedIndexInfo
 	watchlist := cache.NewFilteredListWatchFromClient(
 		clientset.CoreV1().RESTClient(),
 		"endpoints",
-		v1.NamespaceAll,
+		apiv1.NamespaceAll,
 		optionsModifier,
 	)
 	sharedIndexInformer := cache.NewSharedIndexInformer(
 		watchlist,
-		&v1.Endpoints{},
+		&apiv1.Endpoints{},
 		0,
 		cache.Indexers{
 			cache.NamespaceIndex: cache.MetaNamespaceIndexFunc,
