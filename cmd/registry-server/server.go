@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"net"
 	"path/filepath"
 
@@ -20,30 +19,13 @@ import (
 
 	epwatcher "github.com/uromahn/k8s-svc-registry/internal/endpointswatcher"
 	kclient "github.com/uromahn/k8s-svc-registry/internal/kubeclient"
+	worker "github.com/uromahn/k8s-svc-registry/internal/registrationworker"
+	servertypes "github.com/uromahn/k8s-svc-registry/internal/servertypes"
 )
 
 const (
 	port = ":9080"
 )
-
-type ResultMsg struct {
-	Result *reg.RegistrationResult
-	Err    error
-}
-
-type RegOperation int
-
-const (
-	Register RegOperation = iota
-	Unregister
-)
-
-type RegistrationMsg struct {
-	Ctx             context.Context
-	ResponseChannel chan ResultMsg
-	SvcInfo         *reg.ServiceInfo
-	Op              RegOperation
-}
 
 var registrationQueue workqueue.RateLimitingInterface
 
@@ -74,13 +56,13 @@ func register(ctx context.Context, svcInfo *reg.ServiceInfo) (*reg.RegistrationR
 	}
 
 	// create the response channel
-	respChannel := make(chan ResultMsg)
+	respChannel := make(chan servertypes.ResultMsg)
 	// and the registration message
-	regMsg := RegistrationMsg{
+	regMsg := servertypes.RegistrationMsg{
 		Ctx:             ctx,
 		ResponseChannel: respChannel,
 		SvcInfo:         svcInfo,
-		Op:              Register,
+		Op:              servertypes.Register,
 	}
 	// send it to the worker via our queue
 	registrationQueue.Add(regMsg)
@@ -103,13 +85,13 @@ func unRegister(ctx context.Context, svcInfo *reg.ServiceInfo) (*reg.Registratio
 	}
 
 	// create the response channel
-	respChannel := make(chan ResultMsg)
+	respChannel := make(chan servertypes.ResultMsg)
 	// and the registration message
-	regMsg := RegistrationMsg{
+	regMsg := servertypes.RegistrationMsg{
 		Ctx:             ctx,
 		ResponseChannel: respChannel,
 		SvcInfo:         svcInfo,
-		Op:              Unregister,
+		Op:              servertypes.Unregister,
 	}
 	// send it to the worker via our queue
 	registrationQueue.Add(regMsg)
@@ -167,8 +149,11 @@ func main() {
 	klog.Info("Creating workqueue to process new service registrations")
 	registrationQueue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 
+	registrationWorker := worker.NewWorker(registrationQueue, (*indexInformer).GetIndexer())
+	go (*registrationWorker).Run(stop)
+
 	if !syncError {
-		log.Printf("listening for requests on localhost%s ...\n", port)
+		klog.Infof("listening for requests on localhost%s ...\n", port)
 		lis, err := net.Listen("tcp", port)
 		if err != nil {
 			klog.Fatalf("failed to listen : %v", err)

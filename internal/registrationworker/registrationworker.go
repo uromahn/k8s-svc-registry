@@ -12,8 +12,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
-	server "github.com/uromahn/k8s-svc-registry/cmd/registry-server"
 	kclient "github.com/uromahn/k8s-svc-registry/internal/kubeclient"
+	servertypes "github.com/uromahn/k8s-svc-registry/internal/servertypes"
 )
 
 type Worker struct {
@@ -56,7 +56,7 @@ func (w *Worker) processNextRegistration() bool {
 	defer w.queue.Done(obj)
 
 	// convert our object 'obj' to the expected struct
-	msg, ok := obj.(server.RegistrationMsg)
+	msg, ok := obj.(servertypes.RegistrationMsg)
 	if ok {
 		err := w.doWork(msg)
 		// handle an error in case the registration failed for whatever reason
@@ -65,7 +65,7 @@ func (w *Worker) processNextRegistration() bool {
 	return true
 }
 
-func (w *Worker) doWork(msg server.RegistrationMsg) error {
+func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 	var err error = nil
 	svcInfo := msg.SvcInfo
 	respChan := msg.ResponseChannel
@@ -78,23 +78,23 @@ func (w *Worker) doWork(msg server.RegistrationMsg) error {
 	obj, exists, err := w.cache.GetByKey(key)
 
 	if err == nil {
-		if op == server.Register {
+		if op == servertypes.Register {
 			if exists {
-				ep, ok := obj.(apiv1.Endpoints)
+				ep, ok := obj.(*apiv1.Endpoints)
 				if !ok {
 					errMsg := fmt.Sprintf("Cached object is of type %T which does not match expected type of v1.Endpoints", obj)
 					klog.Error(errMsg)
 					err = fmt.Errorf(errMsg)
-					resultMsg := server.ResultMsg{
+					resultMsg := servertypes.ResultMsg{
 						Result: nil,
 						Err:    err,
 					}
 					respChan <- resultMsg
 				} else {
-					result, err := kclient.AddSvcToEndpoint(ctx, nil, &ep, svcInfo)
+					result, err := kclient.AddSvcToEndpoint(ctx, nil, ep, svcInfo)
 					w.handleError(err, msg)
 					if err == nil {
-						resultMsg := server.ResultMsg{
+						resultMsg := servertypes.ResultMsg{
 							Result: result,
 							Err:    err,
 						}
@@ -105,30 +105,30 @@ func (w *Worker) doWork(msg server.RegistrationMsg) error {
 				result, err := kclient.CreateNewEndpoint(ctx, svcInfo)
 				w.handleError(err, msg)
 				if err == nil {
-					resultMsg := server.ResultMsg{
+					resultMsg := servertypes.ResultMsg{
 						Result: result,
 						Err:    err,
 					}
 					respChan <- resultMsg
 				}
 			}
-		} else if op == server.Unregister {
+		} else if op == servertypes.Unregister {
 			if exists {
-				ep, ok := obj.(apiv1.Endpoints)
+				ep, ok := obj.(*apiv1.Endpoints)
 				if !ok {
 					errMsg := fmt.Sprintf("Cached object is of type %T which does not match expected type of v1.Endpoints", obj)
 					klog.Error(errMsg)
 					err = fmt.Errorf(errMsg)
-					resultMsg := server.ResultMsg{
+					resultMsg := servertypes.ResultMsg{
 						Result: nil,
 						Err:    err,
 					}
 					respChan <- resultMsg
 				} else {
-					result, err := kclient.UnregisterWithEndpoint(ctx, nil, &ep, svcInfo)
+					result, err := kclient.UnregisterWithEndpoint(ctx, nil, ep, svcInfo)
 					w.handleError(err, msg)
 					if err == nil {
-						resultMsg := server.ResultMsg{
+						resultMsg := servertypes.ResultMsg{
 							Result: result,
 							Err:    err,
 						}
@@ -139,7 +139,7 @@ func (w *Worker) doWork(msg server.RegistrationMsg) error {
 				errMsg := fmt.Sprintf("Can't unregister endpoint %s:%s for %s - endpoints object does not exist", msg.SvcInfo.HostName, msg.SvcInfo.Ipaddress, key)
 				klog.Warning(errMsg)
 				err = fmt.Errorf(errMsg)
-				resultMsg := server.ResultMsg{
+				resultMsg := servertypes.ResultMsg{
 					Result: nil,
 					Err:    err,
 				}
@@ -150,7 +150,7 @@ func (w *Worker) doWork(msg server.RegistrationMsg) error {
 			errMsg := fmt.Sprintf("Unknown operation %d received for svcInfo %v", op, msg.SvcInfo)
 			klog.Error(errMsg)
 			err = fmt.Errorf(errMsg)
-			resultMsg := server.ResultMsg{
+			resultMsg := servertypes.ResultMsg{
 				Result: nil,
 				Err:    err,
 			}
@@ -160,7 +160,7 @@ func (w *Worker) doWork(msg server.RegistrationMsg) error {
 		errMsg := fmt.Sprintf("Fetching endpoints '%s' from cache failed with error %s", key, err.Error())
 		klog.Error(errMsg)
 		err = fmt.Errorf(errMsg)
-		resultMsg := server.ResultMsg{
+		resultMsg := servertypes.ResultMsg{
 			Result: nil,
 			Err:    err,
 		}
@@ -169,7 +169,7 @@ func (w *Worker) doWork(msg server.RegistrationMsg) error {
 	return err
 }
 
-func (w *Worker) handleError(err error, msg server.RegistrationMsg) {
+func (w *Worker) handleError(err error, msg servertypes.RegistrationMsg) {
 	if err == nil {
 		// Forget about the #AddRateLimited history of the msg on every successful synchronization.
 		// This ensures that future processing of this msg is not delayed because of
@@ -192,7 +192,7 @@ func (w *Worker) handleError(err error, msg server.RegistrationMsg) {
 	// Report to an external entity that, even after several retries, we could not successfully process this message
 	runtime.HandleError(err)
 	klog.Infof("Dropping registration request %v out of the queue: %v", msg, err)
-	resultMsg := server.ResultMsg{
+	resultMsg := servertypes.ResultMsg{
 		Result: nil,
 		Err:    err,
 	}
