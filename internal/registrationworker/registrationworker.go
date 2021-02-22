@@ -49,7 +49,9 @@ func (w *Worker) processNextRegistration() bool {
 	// Block and wait until there is a new item in the working queue
 	obj, quit := w.queue.Get()
 
+	klog.Info("Received new message in queue")
 	if quit {
+		klog.Info("RegistrationWorker received quit message")
 		return false
 	}
 
@@ -61,6 +63,8 @@ func (w *Worker) processNextRegistration() bool {
 		err := w.doWork(msg)
 		// handle an error in case the registration failed for whatever reason
 		w.handleError(err, msg)
+	} else {
+		klog.Error("Received message was not of expected type 'RegistrationMsg' instead of %T", obj)
 	}
 	return true
 }
@@ -75,11 +79,13 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 	op := msg.Op
 	ctx := msg.Ctx
 
+	klog.Info("doWork: retrieving Edpoints from cache")
 	obj, exists, err := w.cache.GetByKey(key)
 
 	if err == nil {
 		if op == servertypes.Register {
 			if exists {
+				klog.Info("doWork: Endpoints object exists in cache")
 				ep, ok := obj.(*apiv1.Endpoints)
 				if !ok {
 					errMsg := fmt.Sprintf("Cached object is of type %T which does not match expected type of v1.Endpoints", obj)
@@ -90,9 +96,11 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 						Err:    err,
 					}
 					respChan <- resultMsg
+					// we do not want to retry this operation, so return a nil error code
+					err = nil
 				} else {
+					klog.Info("doWork: attempting to add new service to Endpoints")
 					result, err := kclient.AddSvcToEndpoint(ctx, nil, ep, svcInfo)
-					w.handleError(err, msg)
 					if err == nil {
 						resultMsg := servertypes.ResultMsg{
 							Result: result,
@@ -102,8 +110,9 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 					}
 				}
 			} else {
+				klog.Info("doWork: Endpoints object does NOT exist in cache")
+				klog.Info("doWork: attempting to create new Endpoints with service")
 				result, err := kclient.CreateNewEndpoint(ctx, svcInfo)
-				w.handleError(err, msg)
 				if err == nil {
 					resultMsg := servertypes.ResultMsg{
 						Result: result,
@@ -124,9 +133,10 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 						Err:    err,
 					}
 					respChan <- resultMsg
+					// we do not want to retry this operation, so return a nil error code
+					err = nil
 				} else {
 					result, err := kclient.UnregisterWithEndpoint(ctx, nil, ep, svcInfo)
-					w.handleError(err, msg)
 					if err == nil {
 						resultMsg := servertypes.ResultMsg{
 							Result: result,
@@ -144,6 +154,8 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 					Err:    err,
 				}
 				respChan <- resultMsg
+				// we do not want to retry this operation, so return a nil error code
+				err = nil
 			}
 		} else {
 			// we have an unknown operation, error out here
@@ -155,6 +167,8 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 				Err:    err,
 			}
 			respChan <- resultMsg
+			// we do not want to retry this operation, so return a nil error code
+			err = nil
 		}
 	} else {
 		errMsg := fmt.Sprintf("Fetching endpoints '%s' from cache failed with error %s", key, err.Error())
@@ -165,6 +179,8 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 			Err:    err,
 		}
 		respChan <- resultMsg
+		// we do not want to retry this operation, so return a nil error code
+		err = nil
 	}
 	return err
 }
