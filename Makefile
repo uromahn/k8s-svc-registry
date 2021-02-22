@@ -1,11 +1,17 @@
+.PHONY: proto
+proto:
+	protoc -I api/registry/ api/registry/registry.proto --go_opt=paths=source_relative --go_out=plugins=grpc:api/registry/
+
 server:
-	go build -o registry-server cmd/registry-server/server.go
+	go build -o server cmd/server/main.go
 
 client:
-	go build -o registry-client cmd/registry-client/client.go
+	go build -o client cmd/client/main.go
 
-all: server client
+.PHONY: all
+all: proto server client
 
+.PHONY: clean
 clean:
-	rm registry-server
-	rm registry-client
+	rm server
+	rm client
