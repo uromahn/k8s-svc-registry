@@ -9,6 +9,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
+// CreateIndexInformer function to create a new IndexInformer
 func CreateIndexInformer(clientset *kubernetes.Clientset) *cache.SharedIndexInformer {
 	klog.Info("Starting endpointswatcher")
 	labelSelector := "service-type=external"

@@ -12,28 +12,32 @@ import (
 	"k8s.io/client-go/util/workqueue"
 )
 
+// ServiceRegistryServer interface delegate for registry.ServiceRegistryServer
 type ServiceRegistryServer struct {
 	reg.UnimplementedServiceRegistryServer
 }
 
 var registrationQueue workqueue.RateLimitingInterface
 
+// InitRegistryServer function to set the registration queue
+// This function has to be called before initializing the gRPC server
 func InitRegistryServer(queue workqueue.RateLimitingInterface) {
 	registrationQueue = queue
 }
 
-// register implements registry.ServiceRegistryService.Register
+// Register implements registry.ServiceRegistryService.Register
 func (*ServiceRegistryServer) Register(ctx context.Context, svcInfo *reg.ServiceInfo) (*reg.RegistrationResult, error) {
 	ports := svcInfo.GetPorts()
-	klog.Infof("Received registration request for namespace   = %s", svcInfo.GetNamespace())
-	klog.Infof("                                  service     = %s", svcInfo.GetServiceName())
-	klog.Infof("                                  hostname    = %s", svcInfo.GetHostName())
-	klog.Infof("                                  ipAddress   = %s", svcInfo.GetIpaddress())
-	for _, port := range ports {
-		klog.Infof("                                  port        = %d", port.GetPort())
-		klog.Infof("                                  portName    = %s", port.GetName())
+	if klog.V(3).Enabled() {
+		klog.Infof("Received registration request for namespace   = %s", svcInfo.GetNamespace())
+		klog.Infof("                                  service     = %s", svcInfo.GetServiceName())
+		klog.Infof("                                  hostname    = %s", svcInfo.GetHostName())
+		klog.Infof("                                  ipAddress   = %s", svcInfo.GetIpaddress())
+		for _, port := range ports {
+			klog.Infof("                                  port        = %d", port.GetPort())
+			klog.Infof("                                  portName    = %s", port.GetName())
+		}
 	}
-
 	// here we call our Kubernetes API to create a corresponding entry in the services endpoints object
 	// make sure we have a namespace
 	_, err := kclient.GetOrCreateNamespace(ctx, svcInfo.GetNamespace(), true)
@@ -65,18 +69,19 @@ func (*ServiceRegistryServer) Register(ctx context.Context, svcInfo *reg.Service
 	return respMsg.Result, respMsg.Err
 }
 
-// unregister implements registry.ServiceREgistryService/UnRegister
+// UnRegister implements registry.ServiceREgistryService/UnRegister
 func (*ServiceRegistryServer) UnRegister(ctx context.Context, svcInfo *reg.ServiceInfo) (*reg.RegistrationResult, error) {
 	ports := svcInfo.GetPorts()
-	klog.Infof("Received unregistration request for namespace   = %s", svcInfo.GetNamespace())
-	klog.Infof("                                    service     = %s", svcInfo.GetServiceName())
-	klog.Infof("                                    hostname    = %s", svcInfo.GetHostName())
-	klog.Infof("                                    ipAddress   = %s", svcInfo.GetIpaddress())
-	for _, port := range ports {
-		klog.Infof("                                    port        = %d", port.GetPort())
-		klog.Infof("                                    portName    = %s", port.GetName())
+	if klog.V(3).Enabled() {
+		klog.Infof("Received unregistration request for namespace   = %s", svcInfo.GetNamespace())
+		klog.Infof("                                    service     = %s", svcInfo.GetServiceName())
+		klog.Infof("                                    hostname    = %s", svcInfo.GetHostName())
+		klog.Infof("                                    ipAddress   = %s", svcInfo.GetIpaddress())
+		for _, port := range ports {
+			klog.Infof("                                    port        = %d", port.GetPort())
+			klog.Infof("                                    portName    = %s", port.GetName())
+		}
 	}
-
 	// create the response channel
 	respChannel := make(chan servertypes.ResultMsg)
 	// and the registration message

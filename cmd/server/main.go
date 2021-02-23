@@ -23,13 +23,16 @@ import (
 )
 
 const (
-	port = ":9080"
+	port            = ":9080"
+	defaultLogLevel = "2"
 )
 
 var registrationQueue workqueue.RateLimitingInterface
 
 func main() {
-	// TODO: implement a better logging solution
+	klog.InitFlags(nil)
+	flag.Set("v", defaultLogLevel)
+
 	// initialize our Kubernetes client
 	var kubeconfig *string
 	if home := homedir.HomeDir(); home != "" {
