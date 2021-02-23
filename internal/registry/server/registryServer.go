@@ -18,11 +18,13 @@ type ServiceRegistryServer struct {
 }
 
 var registrationQueue workqueue.RateLimitingInterface
+var k8sClient *kclient.KubeClient
 
 // InitRegistryServer function to set the registration queue
 // This function has to be called before initializing the gRPC server
-func InitRegistryServer(queue workqueue.RateLimitingInterface) {
+func InitRegistryServer(queue workqueue.RateLimitingInterface, kc *kclient.KubeClient) {
 	registrationQueue = queue
+	k8sClient = kc
 }
 
 // Register implements registry.ServiceRegistryService.Register
@@ -40,13 +42,13 @@ func (*ServiceRegistryServer) Register(ctx context.Context, svcInfo *reg.Service
 	}
 	// here we call our Kubernetes API to create a corresponding entry in the services endpoints object
 	// make sure we have a namespace
-	_, err := kclient.GetOrCreateNamespace(ctx, svcInfo.GetNamespace(), true)
+	_, err := k8sClient.GetOrCreateNamespace(ctx, svcInfo.GetNamespace(), true)
 	if err != nil {
 		klog.Errorf("ERROR: could not get or create namespace '%s'", svcInfo.GetNamespace())
 		return nil, err
 	}
 	// make sure we have the service object created
-	_, err = kclient.GetOrCreateService(ctx, svcInfo.GetNamespace(), svcInfo.GetServiceName(), svcInfo.GetPorts(), true)
+	_, err = k8sClient.GetOrCreateService(ctx, svcInfo.GetNamespace(), svcInfo.GetServiceName(), svcInfo.GetPorts(), true)
 	if err != nil {
 		klog.Errorf("ERROR: unable to get or create service '%s' in namespace '%s'", svcInfo.GetServiceName(), svcInfo.GetNamespace())
 		return nil, err

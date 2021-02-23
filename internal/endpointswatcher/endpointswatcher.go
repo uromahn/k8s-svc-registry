@@ -3,14 +3,14 @@ package endpointswatcher
 import (
 	"k8s.io/klog/v2"
 
+	kclient "github.com/uromahn/k8s-svc-registry/internal/kubeclient"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 )
 
 // CreateIndexInformer function to create a new IndexInformer
-func CreateIndexInformer(clientset *kubernetes.Clientset) *cache.SharedIndexInformer {
+func CreateIndexInformer(k8sClient *kclient.KubeClient) *cache.SharedIndexInformer {
 	klog.Info("Starting endpointswatcher")
 	labelSelector := "service-type=external"
 	optionsModifier := func(options *metav1.ListOptions) {
@@ -18,7 +18,7 @@ func CreateIndexInformer(clientset *kubernetes.Clientset) *cache.SharedIndexInfo
 	}
 
 	watchlist := cache.NewFilteredListWatchFromClient(
-		clientset.CoreV1().RESTClient(),
+		k8sClient.Clientset.CoreV1().RESTClient(),
 		"endpoints",
 		apiv1.NamespaceAll,
 		optionsModifier,

@@ -42,13 +42,13 @@ func main() {
 	}
 	flag.Parse()
 
-	clientset, err := kclient.InitKubeClient(kubeconfig)
+	k8sClient, err := kclient.NewKubeClient(kubeconfig, nil)
 	if err != nil {
 		klog.Fatalf("FATAL: cannot initialize Kubernetes client: %s", err.Error())
 	}
 
 	klog.Info("Creating IndexInformer for endpoints objects in all namespaces")
-	indexInformer := epwatcher.CreateIndexInformer(clientset)
+	indexInformer := epwatcher.CreateIndexInformer(k8sClient)
 	stop := make(chan struct{})
 	defer close(stop)
 
@@ -64,9 +64,9 @@ func main() {
 
 	klog.Info("Creating workqueue to process new service registrations")
 	registrationQueue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
-	registry.InitRegistryServer(registrationQueue)
+	registry.InitRegistryServer(registrationQueue, k8sClient)
 
-	registrationWorker := worker.NewWorker(registrationQueue, (*indexInformer).GetIndexer())
+	registrationWorker := worker.NewWorker(registrationQueue, (*indexInformer).GetIndexer(), k8sClient)
 	go (*registrationWorker).Run(stop)
 
 	if !syncError {

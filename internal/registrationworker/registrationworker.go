@@ -18,15 +18,17 @@ import (
 
 // Worker structure for registration worker
 type Worker struct {
-	queue workqueue.RateLimitingInterface
-	cache cache.Indexer
+	queue     workqueue.RateLimitingInterface
+	cache     cache.Indexer
+	k8sClient *kclient.KubeClient
 }
 
 // NewWorker factory function to create a new registration worker
-func NewWorker(queue workqueue.RateLimitingInterface, cache cache.Indexer) *Worker {
+func NewWorker(queue workqueue.RateLimitingInterface, cache cache.Indexer, k8sClient *kclient.KubeClient) *Worker {
 	return &Worker{
-		queue: queue,
-		cache: cache,
+		queue:     queue,
+		cache:     cache,
+		k8sClient: k8sClient,
 	}
 }
 
@@ -116,7 +118,7 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 					if klog.V(3).Enabled() {
 						klog.Info("doWork: attempting to add new service to Endpoints")
 					}
-					result, err := kclient.AddSvcToEndpoint(ctx, nil, ep, svcInfo)
+					result, err := w.k8sClient.AddSvcToEndpoint(ctx, nil, ep, svcInfo)
 					if err == nil {
 						resultMsg := servertypes.ResultMsg{
 							Result: result,
@@ -130,7 +132,7 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 					klog.Info("doWork: Endpoints object does NOT exist in cache")
 					klog.Info("doWork: attempting to create new Endpoints with service")
 				}
-				result, err := kclient.CreateNewEndpoint(ctx, svcInfo)
+				result, err := w.k8sClient.CreateNewEndpoint(ctx, svcInfo)
 				if err == nil {
 					resultMsg := servertypes.ResultMsg{
 						Result: result,
@@ -154,7 +156,7 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 					// we do not want to retry this operation, so return a nil error code
 					err = nil
 				} else {
-					result, err := kclient.UnregisterWithEndpoint(ctx, nil, ep, svcInfo)
+					result, err := w.k8sClient.UnregisterWithEndpoint(ctx, nil, ep, svcInfo)
 					if err == nil {
 						resultMsg := servertypes.ResultMsg{
 							Result: result,
