@@ -49,7 +49,7 @@ func main() {
 			Ports:       namedPorts,
 			Weight:      1.0,
 		}
-		client := registry.NewServiceRegistryClient(conn, time.Duration(5)*time.Second)
+		client := registry.NewServiceRegistryClient(conn, time.Duration(10)*time.Second)
 		ctx := context.Background()
 
 		// contact the server with a registration message and print the result

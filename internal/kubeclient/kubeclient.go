@@ -18,35 +18,36 @@ import (
 )
 
 type KubeClient struct {
-	Clientset *kubernetes.Clientset
+	Client v1.CoreV1Interface
 }
 
 // InitKubeClient initializes a Kubernetes clientset with the given kubeconfig
-func NewKubeClient(kubeconfig *string, clientset *kubernetes.Clientset) (*KubeClient, error) {
-	var cs *kubernetes.Clientset
-	if clientset == nil {
+func NewKubeClient(kubeconfig *string, client v1.CoreV1Interface) (*KubeClient, error) {
+	var c v1.CoreV1Interface
+	if client == nil {
 		config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
 		if err != nil {
 			klog.Errorf("ERROR - while creating the config: %s", err.Error())
 			return nil, err
 		}
-		cs, err = kubernetes.NewForConfig(config)
+		cs, err := kubernetes.NewForConfig(config)
 		if err != nil {
 			klog.Errorf("ERROR - while creating clientset: %s", err.Error())
 			return nil, err
 		}
+		c = cs.CoreV1()
 	} else {
-		cs = clientset
+		c = client
 	}
 
-	return &KubeClient{Clientset: cs}, nil
+	return &KubeClient{Client: c}, nil
 }
 
 // GetOrCreateNamespace will try to get the namespace object named 'nsName', or
 // if it doesn't exist, will create it.
 func (kc *KubeClient) GetOrCreateNamespace(ctx context.Context, nsName string, errorIfNotExist bool) (*apiv1.Namespace, error) {
 	// first try to get the namespace to see if it already exists
-	nsClient := kc.Clientset.CoreV1().Namespaces()
+	nsClient := kc.Client.Namespaces()
 	ns, err := nsClient.Get(ctx, nsName, metav1.GetOptions{})
 	if err == nil {
 		klog.Infof("INFO: namespace '%s' exists.", nsName)
@@ -71,7 +72,7 @@ func (kc *KubeClient) GetOrCreateNamespace(ctx context.Context, nsName string, e
 // GetOrCreateService will try to get a service with the name 'svcName'
 // in the namespace 'ns'. If it doesn't exist, it will create the object.
 func (kc *KubeClient) GetOrCreateService(ctx context.Context, ns string, svcName string, ports []*reg.NamedPort, errorIfNotExist bool) (*apiv1.Service, error) {
-	svcClient := kc.Clientset.CoreV1().Services(ns)
+	svcClient := kc.Client.Services(ns)
 	svc, err := svcClient.Get(ctx, svcName, metav1.GetOptions{})
 	if err == nil {
 		klog.Infof("INFO: service '%s' in namespace '%s' exists.", svcName, ns)
@@ -104,7 +105,7 @@ func (kc *KubeClient) CreateNewEndpoint(ctx context.Context, svcInfo *reg.Servic
 		result := newRegistrationResult(svcInfo, uint32(404), errMsg)
 		return result, err
 	}
-	epClient := kc.Clientset.CoreV1().Endpoints(svcInfo.Namespace)
+	epClient := kc.Client.Endpoints(svcInfo.Namespace)
 	newEp := newEndpointsObj(ctx, svcInfo)
 	statusCode := uint32(200)
 	statusDetails := "registered"
@@ -156,7 +157,7 @@ func (kc *KubeClient) AddSvcToEndpoint(ctx context.Context, epClient v1.Endpoint
 		return result, err
 	}
 	if epClient == nil {
-		epClient = kc.Clientset.CoreV1().Endpoints(svcInfo.Namespace)
+		epClient = kc.Client.Endpoints(svcInfo.Namespace)
 	}
 	// create a map from our ports array to check for equality
 	portsMap := make(map[int32]bool, len(newPorts))
@@ -287,7 +288,7 @@ func (kc *KubeClient) RegisterEndpoint(ctx context.Context, svcInfo *reg.Service
 		result := newRegistrationResult(svcInfo, uint32(404), errMsg)
 		return result, err
 	}
-	epClient := kc.Clientset.CoreV1().Endpoints(svcInfo.Namespace)
+	epClient := kc.Client.Endpoints(svcInfo.Namespace)
 	// let's see if we already have an Endpoints object for our service
 	ep, err := epClient.Get(ctx, svcInfo.ServiceName, metav1.GetOptions{})
 
@@ -343,7 +344,7 @@ func (kc *KubeClient) UnregisterWithEndpoint(ctx context.Context, epClient v1.En
 	}
 
 	if epClient == nil {
-		epClient = kc.Clientset.CoreV1().Endpoints(svcInfo.Namespace)
+		epClient = kc.Client.Endpoints(svcInfo.Namespace)
 	}
 
 	subsets := ep.Subsets
@@ -433,7 +434,7 @@ func (kc *KubeClient) UnregisterEndpoint(ctx context.Context, svcInfo *reg.Servi
 		result := newRegistrationResult(svcInfo, uint32(404), errMsg)
 		return result, err
 	}
-	epClient := kc.Clientset.CoreV1().Endpoints(svcInfo.Namespace)
+	epClient := kc.Client.Endpoints(svcInfo.Namespace)
 	// let's retrieve the Endpoints object for our service
 	ep, err := epClient.Get(ctx, svcInfo.ServiceName, metav1.GetOptions{})
 
@@ -454,7 +455,7 @@ func (kc *KubeClient) UnregisterEndpoint(ctx context.Context, svcInfo *reg.Servi
 
 func (kc *KubeClient) checkSvcExists(ctx context.Context, svcInfo *reg.ServiceInfo) (bool, error) {
 	var exists bool = false
-	svcClient := kc.Clientset.CoreV1().Services(svcInfo.Namespace)
+	svcClient := kc.Client.Services(svcInfo.Namespace)
 	_, err := svcClient.Get(ctx, svcInfo.ServiceName, metav1.GetOptions{})
 	if k8serrors.IsNotFound(err) {
 		klog.Infof("%s: service %s in namespace %s does not exists! Cannot register endpoint for IP %s ports %v",

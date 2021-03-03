@@ -17,14 +17,20 @@ type ServiceRegistryServer struct {
 	reg.UnimplementedServiceRegistryServer
 }
 
-var registrationQueue workqueue.RateLimitingInterface
-var k8sClient *kclient.KubeClient
+type registryServer struct {
+	registrationQueue workqueue.RateLimitingInterface
+	k8sClient         *kclient.KubeClient
+}
+
+var registryServerInfo registryServer
 
 // InitRegistryServer function to set the registration queue
 // This function has to be called before initializing the gRPC server
 func InitRegistryServer(queue workqueue.RateLimitingInterface, kc *kclient.KubeClient) {
-	registrationQueue = queue
-	k8sClient = kc
+	registryServerInfo = registryServer{
+		registrationQueue: queue,
+		k8sClient:         kc,
+	}
 }
 
 // Register implements registry.ServiceRegistryService.Register
@@ -42,13 +48,13 @@ func (*ServiceRegistryServer) Register(ctx context.Context, svcInfo *reg.Service
 	}
 	// here we call our Kubernetes API to create a corresponding entry in the services endpoints object
 	// make sure we have a namespace
-	_, err := k8sClient.GetOrCreateNamespace(ctx, svcInfo.GetNamespace(), true)
+	_, err := registryServerInfo.k8sClient.GetOrCreateNamespace(ctx, svcInfo.GetNamespace(), true)
 	if err != nil {
 		klog.Errorf("ERROR: could not get or create namespace '%s'", svcInfo.GetNamespace())
 		return nil, err
 	}
 	// make sure we have the service object created
-	_, err = k8sClient.GetOrCreateService(ctx, svcInfo.GetNamespace(), svcInfo.GetServiceName(), svcInfo.GetPorts(), true)
+	_, err = registryServerInfo.k8sClient.GetOrCreateService(ctx, svcInfo.GetNamespace(), svcInfo.GetServiceName(), svcInfo.GetPorts(), true)
 	if err != nil {
 		klog.Errorf("ERROR: unable to get or create service '%s' in namespace '%s'", svcInfo.GetServiceName(), svcInfo.GetNamespace())
 		return nil, err
@@ -64,7 +70,7 @@ func (*ServiceRegistryServer) Register(ctx context.Context, svcInfo *reg.Service
 		Op:              servertypes.Register,
 	}
 	// send it to the worker via our queue
-	registrationQueue.Add(regMsg)
+	registryServerInfo.registrationQueue.Add(regMsg)
 	// wait for the response
 	respMsg := <-respChannel
 	// we expect the worker to close the channel after the response has been sent
@@ -94,7 +100,7 @@ func (*ServiceRegistryServer) UnRegister(ctx context.Context, svcInfo *reg.Servi
 		Op:              servertypes.Unregister,
 	}
 	// send it to the worker via our queue
-	registrationQueue.Add(regMsg)
+	registryServerInfo.registrationQueue.Add(regMsg)
 	// wait for the response
 	respMsg := <-respChannel
 	// we expect the worker to close the channel after the response has been sent

@@ -18,7 +18,7 @@ func CreateIndexInformer(k8sClient *kclient.KubeClient) *cache.SharedIndexInform
 	}
 
 	watchlist := cache.NewFilteredListWatchFromClient(
-		k8sClient.Clientset.CoreV1().RESTClient(),
+		k8sClient.Client.RESTClient(),
 		"endpoints",
 		apiv1.NamespaceAll,
 		optionsModifier,
