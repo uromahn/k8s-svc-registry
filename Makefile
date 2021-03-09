@@ -10,6 +10,10 @@ server:
 client:
 	go build -o client -v cmd/client/main.go
 
+.PHONY: test
+test:
+	go test -v -timeout 30s -run TestRegister github.com/uromahn/k8s-svc-registry/pkg/registry/server
+
 .PHONY: all
 all: proto server client
 

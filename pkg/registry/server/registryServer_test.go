@@ -1,4 +1,4 @@
-package registry
+package registry_test
 
 import (
 	"context"
@@ -14,17 +14,18 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
+
 	utilRuntime "k8s.io/apimachinery/pkg/util/runtime"
 	fake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
 	reg "github.com/uromahn/k8s-svc-registry/api/registry"
-	epwatcher "github.com/uromahn/k8s-svc-registry/internal/endpointswatcher"
-	kclient "github.com/uromahn/k8s-svc-registry/internal/kubeclient"
-	worker "github.com/uromahn/k8s-svc-registry/internal/registrationworker"
-	registryC "github.com/uromahn/k8s-svc-registry/internal/registry/client"
-	registryS "github.com/uromahn/k8s-svc-registry/internal/registry/server"
+	epwatcher "github.com/uromahn/k8s-svc-registry/pkg/endpointswatcher"
+	kclient "github.com/uromahn/k8s-svc-registry/pkg/kubeclient"
+	worker "github.com/uromahn/k8s-svc-registry/pkg/registrationworker"
+	registryC "github.com/uromahn/k8s-svc-registry/pkg/registry/client"
+	registryS "github.com/uromahn/k8s-svc-registry/pkg/registry/server"
 )
 
 // here come a bunch of helper functions
@@ -124,8 +125,11 @@ func registrationResult(svcInfo *reg.ServiceInfo, statusCode uint32, statusDetai
 
 // some test data
 const (
-	nsName  string = "test-dev"
-	svcName string = "test"
+	nsName   string = "test-dev"
+	svcName  string = "test"
+	hostname string = "localhost"
+	ipAddr   string = "10.0.0.1"
+	nodeName string = "uromahn-vm-ubuntu18"
 )
 
 var port = &reg.NamedPort{
@@ -135,29 +139,60 @@ var port = &reg.NamedPort{
 
 var namedPorts = []*reg.NamedPort{port}
 
+var emptyNs = &apiv1.Namespace{}
+var emptySvc = &apiv1.Service{}
 var testNs = namespace(nsName)
 var testSvc = service(svcName, nsName, namedPorts)
 
 var svcInfo = &reg.ServiceInfo{
 	Namespace:   nsName,
 	ServiceName: svcName,
-	HostName:    "localhost",
-	Ipaddress:   "10.0.0.1",
-	NodeName:    "uromahn-vm-ubuntu18",
+	HostName:    hostname,
+	Ipaddress:   ipAddr,
+	NodeName:    nodeName,
 	Ports:       namedPorts,
 	Weight:      1.0,
 }
 
 var tests = []struct {
-	description string
-	namespace   string
-	request     *reg.ServiceInfo
-	expected    *reg.RegistrationResult
-	objs        []runtime.Object
+	description    string
+	namespace      string
+	request        *reg.ServiceInfo
+	expectedErr    error
+	expectedResult *reg.RegistrationResult
+	objs           []runtime.Object
 }{
-	{"no ns - no service", nsName, svcInfo, nil, nil},
-	{"with ns - no service", nsName, svcInfo, nil, []runtime.Object{testNs}},
-	{"with ns - with service", nsName, svcInfo, nil, []runtime.Object{testNs, testSvc}},
+	{
+		"no ns - no service",
+		nsName,
+		svcInfo,
+		fmt.Errorf("rpc error: code = Unknown desc = namepace %s does not exist", nsName),
+		&reg.RegistrationResult{},
+		[]runtime.Object{emptyNs, emptySvc},
+	},
+	{
+		"with ns - no service",
+		nsName,
+		svcInfo,
+		fmt.Errorf("rpc error: code = Unknown desc = service %s in namespace %s does not exist", svcName, nsName),
+		&reg.RegistrationResult{},
+		[]runtime.Object{testNs, emptySvc},
+	},
+	{
+		"with ns - with service",
+		nsName,
+		svcInfo,
+		nil,
+		&reg.RegistrationResult{
+			Namespace:     nsName,
+			ServiceName:   svcName,
+			Ipaddress:     ipAddr,
+			Ports:         namedPorts,
+			Status:        200,
+			StatusDetails: "registered",
+		},
+		[]runtime.Object{testNs, testSvc},
+	},
 }
 
 func dialer() func(context.Context, string) (net.Conn, error) {
@@ -178,6 +213,13 @@ func dialer() func(context.Context, string) (net.Conn, error) {
 	}
 }
 
+func compareResults(actual, expected reg.RegistrationResult) bool {
+	comp := (actual.Ipaddress == expected.Ipaddress) && (actual.Namespace == expected.Namespace) &&
+		(actual.ServiceName == expected.ServiceName) && (actual.Status == expected.Status) &&
+		(actual.Ports[0].Name == expected.Ports[0].Name) && (actual.Ports[0].Port == expected.Ports[0].Port)
+	return comp
+}
+
 func TestRegister(t *testing.T) {
 	ctx := context.Background()
 	conn, err := grpc.DialContext(ctx, "", grpc.WithInsecure(), grpc.WithContextDialer(dialer()))
@@ -191,25 +233,24 @@ func TestRegister(t *testing.T) {
 			clientset := fake.NewSimpleClientset(test.objs...)
 			k8sClient, err := kclient.NewKubeClient(nil, clientset.CoreV1())
 			if err != nil {
-				klog.Fatalf("FATAL: cannot initialize Kubernetes client: %s", err.Error())
+				t.Errorf("FATAL: cannot initialize Kubernetes client: %s", err.Error())
 			}
 
-			klog.Info("Creating IndexInformer for endpoints objects in all namespaces")
+			t.Log("Creating IndexInformer for endpoints objects in all namespaces")
 			indexInformer := epwatcher.CreateIndexInformer(k8sClient)
 			stop := make(chan struct{})
 			defer close(stop)
 
-			klog.Info("Starting IndexInformer")
 			go (*indexInformer).Run(stop)
-
-			klog.Info("Waiting for endpoints cache to synchronized")
 			syncError := false
+
+			t.Log("Waiting for endpoints cache to synchronized")
 			if !cache.WaitForCacheSync(stop, (*indexInformer).HasSynced) {
 				utilRuntime.HandleError(fmt.Errorf("Timed out waiting for caches to sync"))
 				syncError = true
 			}
 
-			klog.Info("Creating workqueue to process new service registrations")
+			t.Log("Creating workqueue to process new service registrations")
 			registrationQueue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 			registryS.InitRegistryServer(registrationQueue, k8sClient)
 
@@ -219,13 +260,19 @@ func TestRegister(t *testing.T) {
 			if !syncError {
 				grpcClient := registryC.NewServiceRegistryClient(conn, time.Duration(10)*time.Second)
 				actualResult, err := grpcClient.Register(ctx, test.request)
-				if err != nil {
-					t.Errorf("Unexpected error: %s", err)
+				if err != nil && err.Error() != test.expectedErr.Error() {
+					t.Errorf("Expected error was '%v' but got '%v'", test.expectedErr, err)
 					return
 				}
-				t.Logf("actual result = %v", actualResult)
+				if err == nil {
+					if !compareResults(*actualResult, *test.expectedResult) {
+						t.Errorf("Expected result differs (got, want): (%v, %v)", actualResult, test.expectedResult)
+						return
+					}
+					t.Logf("actual result = %v", actualResult)
+				}
 			} else {
-				klog.Fatal("Cache sync error unrecoverable - exiting!")
+				t.Error("Cache sync error unrecoverable - exiting!")
 			}
 		})
 	}

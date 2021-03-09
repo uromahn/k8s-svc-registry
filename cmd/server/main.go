@@ -16,10 +16,10 @@ import (
 	"k8s.io/client-go/util/homedir"
 	"k8s.io/client-go/util/workqueue"
 
-	epwatcher "github.com/uromahn/k8s-svc-registry/internal/endpointswatcher"
-	kclient "github.com/uromahn/k8s-svc-registry/internal/kubeclient"
-	worker "github.com/uromahn/k8s-svc-registry/internal/registrationworker"
-	registry "github.com/uromahn/k8s-svc-registry/internal/registry/server"
+	epwatcher "github.com/uromahn/k8s-svc-registry/pkg/endpointswatcher"
+	kclient "github.com/uromahn/k8s-svc-registry/pkg/kubeclient"
+	worker "github.com/uromahn/k8s-svc-registry/pkg/registrationworker"
+	registry "github.com/uromahn/k8s-svc-registry/pkg/registry/server"
 )
 
 const (

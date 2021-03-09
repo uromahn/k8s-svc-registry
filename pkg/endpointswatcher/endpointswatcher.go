@@ -1,9 +1,12 @@
 package endpointswatcher
 
 import (
+	"context"
+
 	"k8s.io/klog/v2"
 
-	kclient "github.com/uromahn/k8s-svc-registry/internal/kubeclient"
+	kclient "github.com/uromahn/k8s-svc-registry/pkg/kubeclient"
+	"github.com/uromahn/k8s-svc-registry/pkg/util"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
@@ -17,12 +20,17 @@ func CreateIndexInformer(k8sClient *kclient.KubeClient) *cache.SharedIndexInform
 		options.LabelSelector = labelSelector
 	}
 
-	watchlist := cache.NewFilteredListWatchFromClient(
-		k8sClient.Client.RESTClient(),
-		"endpoints",
-		apiv1.NamespaceAll,
-		optionsModifier,
-	)
+	klog.Info("creating a FilteredListWatch...")
+	watchlist := util.NewFilteredEndpointsListWatchFromClient(context.TODO(), k8sClient.Client, apiv1.NamespaceAll, optionsModifier)
+	/*
+		watchlist := cache.NewFilteredListWatchFromClient(
+			k8sClient.Client.RESTClient(),
+			"endpoints",
+			apiv1.NamespaceAll,
+			optionsModifier,
+		)
+	*/
+	klog.Info("creating a NewSharedIndexInformer...")
 	sharedIndexInformer := cache.NewSharedIndexInformer(
 		watchlist,
 		&apiv1.Endpoints{},

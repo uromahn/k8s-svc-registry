@@ -12,8 +12,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
-	kclient "github.com/uromahn/k8s-svc-registry/internal/kubeclient"
-	servertypes "github.com/uromahn/k8s-svc-registry/internal/servertypes"
+	kclient "github.com/uromahn/k8s-svc-registry/pkg/kubeclient"
+	servertypes "github.com/uromahn/k8s-svc-registry/pkg/servertypes"
 )
 
 // Worker structure for registration worker

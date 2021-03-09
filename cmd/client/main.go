@@ -8,7 +8,7 @@ import (
 	"time"
 
 	reg "github.com/uromahn/k8s-svc-registry/api/registry"
-	registry "github.com/uromahn/k8s-svc-registry/internal/registry/client"
+	registry "github.com/uromahn/k8s-svc-registry/pkg/registry/client"
 	"google.golang.org/grpc"
 )
 

@@ -7,8 +7,8 @@ import (
 
 	reg "github.com/uromahn/k8s-svc-registry/api/registry"
 
-	kclient "github.com/uromahn/k8s-svc-registry/internal/kubeclient"
-	servertypes "github.com/uromahn/k8s-svc-registry/internal/servertypes"
+	kclient "github.com/uromahn/k8s-svc-registry/pkg/kubeclient"
+	servertypes "github.com/uromahn/k8s-svc-registry/pkg/servertypes"
 	"k8s.io/client-go/util/workqueue"
 )
 
