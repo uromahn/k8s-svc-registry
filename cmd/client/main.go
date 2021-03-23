@@ -10,6 +10,7 @@ import (
 	reg "github.com/uromahn/k8s-svc-registry/api/registry"
 	registry "github.com/uromahn/k8s-svc-registry/pkg/registry/client"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 )
 
 const (
@@ -21,10 +22,16 @@ var (
 	op = flag.String("op", "r", "operation: r=register, u=unregister")
 )
 
+var kacp = keepalive.ClientParameters{
+	Time:                2 * time.Second, // send pings every 2 seconds if there is no activity
+	Timeout:             1 * time.Second, // wait 1 second for ping ack before considering the connection dead
+	PermitWithoutStream: true,            // send pings even without active streams
+}
+
 func main() {
 	flag.Parse()
 	// Set up a connection to the server.
-	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
+	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithKeepaliveParams(kacp))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
@@ -38,6 +45,7 @@ func main() {
 	}
 	namedPorts = append(namedPorts, &port)
 
+	client := registry.NewServiceRegistryClient(conn, time.Duration(10)*time.Second)
 	for ip := 1; ip < 11; ip++ {
 		ipAddr := "192.168.1." + strconv.Itoa(ip)
 		svcInfo := &reg.ServiceInfo{
@@ -49,7 +57,6 @@ func main() {
 			Ports:       namedPorts,
 			Weight:      1.0,
 		}
-		client := registry.NewServiceRegistryClient(conn, time.Duration(10)*time.Second)
 		ctx := context.Background()
 
 		// contact the server with a registration message and print the result

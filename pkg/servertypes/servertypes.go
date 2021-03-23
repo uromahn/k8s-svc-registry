@@ -23,4 +23,5 @@ type RegistrationMsg struct {
 	ResponseChannel chan ResultMsg
 	SvcInfo         *reg.ServiceInfo
 	Op              RegOperation
+	Retry           bool
 }

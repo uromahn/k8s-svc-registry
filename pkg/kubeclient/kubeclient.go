@@ -97,13 +97,16 @@ func (kc *KubeClient) GetOrCreateService(ctx context.Context, ns string, svcName
 // This function makes the following assumptions:
 // * the namespace given in nsName already exists
 // * a headless service as provided in svcInfo.ServiceName has already been created
-func (kc *KubeClient) CreateNewEndpoint(ctx context.Context, svcInfo *reg.ServiceInfo) (*reg.RegistrationResult, error) {
-	// before we do anything, we check if the service object actually exists
-	exists, err := kc.checkSvcExists(ctx, svcInfo)
-	if !exists {
-		errMsg := fmt.Sprint("service does not exist")
-		result := newRegistrationResult(svcInfo, uint32(404), errMsg)
-		return result, err
+func (kc *KubeClient) CreateNewEndpoint(ctx context.Context, svcInfo *reg.ServiceInfo, chkSvcExists bool) (*reg.RegistrationResult, error) {
+	var err error
+	if chkSvcExists {
+		// before we do anything, we check if the service object actually exists
+		exists, err := kc.checkSvcExists(ctx, svcInfo)
+		if !exists {
+			errMsg := fmt.Sprint("service does not exist")
+			result := newRegistrationResult(svcInfo, uint32(404), errMsg)
+			return result, err
+		}
 	}
 	epClient := kc.Client.Endpoints(svcInfo.Namespace)
 	newEp := newEndpointsObj(ctx, svcInfo)
@@ -136,7 +139,7 @@ func (kc *KubeClient) CreateNewEndpoint(ctx context.Context, svcInfo *reg.Servic
 //    b. the given svcInfo.Ports does not exist: we have to create a new endpointsSubset object with the Ipaddress:Ports
 //
 // TODO: in a future refactoring, we might want to explore if we can benefit from this library: https://github.com/banzaicloud/k8s-objectmatcher
-func (kc *KubeClient) AddSvcToEndpoint(ctx context.Context, epClient v1.EndpointsInterface, ep *apiv1.Endpoints, svcInfo *reg.ServiceInfo) (*reg.RegistrationResult, error) {
+func (kc *KubeClient) AddSvcToEndpoint(ctx context.Context, epClient v1.EndpointsInterface, ep *apiv1.Endpoints, svcInfo *reg.ServiceInfo, chkSvcExists bool) (*reg.RegistrationResult, error) {
 	var err error = nil
 	// let's add our service info to the endpoints object
 	newIP := svcInfo.Ipaddress
@@ -149,12 +152,14 @@ func (kc *KubeClient) AddSvcToEndpoint(ctx context.Context, epClient v1.Endpoint
 		result := newRegistrationResult(svcInfo, uint32(500), errMsg)
 		return result, err
 	}
-	// before we do anything, we check if the service object actually exists
-	exists, err := kc.checkSvcExists(ctx, svcInfo)
-	if !exists {
-		errMsg := fmt.Sprint("service does not exist")
-		result := newRegistrationResult(svcInfo, uint32(404), errMsg)
-		return result, err
+	if chkSvcExists {
+		// before we do anything, we check if the service object actually exists
+		exists, err := kc.checkSvcExists(ctx, svcInfo)
+		if !exists {
+			errMsg := fmt.Sprint("service does not exist")
+			result := newRegistrationResult(svcInfo, uint32(404), errMsg)
+			return result, err
+		}
 	}
 	if epClient == nil {
 		epClient = kc.Client.Endpoints(svcInfo.Namespace)
@@ -206,9 +211,15 @@ func (kc *KubeClient) AddSvcToEndpoint(ctx context.Context, epClient v1.Endpoint
 			statusCode := uint32(200)
 			statusDetails := "registered"
 			if err != nil {
-				klog.Errorf("unable to move Endpoints object from notReady to ready - %s", err.Error())
-				statusCode = 500
-				statusDetails = "unable to register"
+				if k8serrors.IsConflict(err) {
+					klog.Warningf("conflict while updating resource - signaling to retry")
+					statusCode = uint32(409)
+					statusDetails = "conflict"
+				} else {
+					klog.Errorf("unable to move Endpoints object from notReady to ready - %s", err.Error())
+					statusCode = 500
+					statusDetails = "unable to register"
+				}
 			}
 			result = newRegistrationResult(svcInfo, statusCode, statusDetails)
 			return result, err
@@ -238,9 +249,15 @@ func (kc *KubeClient) AddSvcToEndpoint(ctx context.Context, epClient v1.Endpoint
 			statusCode := uint32(200)
 			statusDetails := "registered"
 			if err != nil {
-				klog.Errorf("unable to append Endpoints object - %s", err.Error())
-				statusCode = 500
-				statusDetails = "unable to register"
+				if k8serrors.IsConflict(err) {
+					klog.Warningf("conflict while updating resource - signaling to retry")
+					statusCode = uint32(409)
+					statusDetails = "conflict"
+				} else {
+					klog.Errorf("unable to append Endpoints object - %s", err.Error())
+					statusCode = 500
+					statusDetails = "unable to register"
+				}
 			}
 			result = newRegistrationResult(svcInfo, statusCode, statusDetails)
 		}
@@ -253,9 +270,15 @@ func (kc *KubeClient) AddSvcToEndpoint(ctx context.Context, epClient v1.Endpoint
 		statusCode := uint32(200)
 		statusDetails := "registered"
 		if err != nil {
-			klog.Errorf("unable to create and add new EndpointsSubset object - %s", err.Error())
-			statusCode = 500
-			statusDetails = "unable to register"
+			if k8serrors.IsConflict(err) {
+				klog.Warningf("conflict while updating resource - signaling to retry")
+				statusCode = uint32(409)
+				statusDetails = "conflict"
+			} else {
+				klog.Errorf("unable to create and add new EndpointsSubset object - %s", err.Error())
+				statusCode = 500
+				statusDetails = "unable to register"
+			}
 		}
 		result = newRegistrationResult(svcInfo, statusCode, statusDetails)
 	}
@@ -280,13 +303,15 @@ func (kc *KubeClient) AddSvcToEndpoint(ctx context.Context, epClient v1.Endpoint
 //    b. the given svcInfo.Ports does not exist: we have to create a new endpointsSubset object with the Ipaddress:Ports
 //
 // TODO: in a future refactoring, we might want to explore if we can benefit from this library: https://github.com/banzaicloud/k8s-objectmatcher
-func (kc *KubeClient) RegisterEndpoint(ctx context.Context, svcInfo *reg.ServiceInfo) (*reg.RegistrationResult, error) {
-	// before we do anything, we check if the service object actually exists
-	exists, err := kc.checkSvcExists(ctx, svcInfo)
-	if !exists {
-		errMsg := fmt.Sprint("service does not exist")
-		result := newRegistrationResult(svcInfo, uint32(404), errMsg)
-		return result, err
+func (kc *KubeClient) RegisterEndpoint(ctx context.Context, svcInfo *reg.ServiceInfo, chkSvcExists bool) (*reg.RegistrationResult, error) {
+	if chkSvcExists {
+		// before we do anything, we check if the service object actually exists
+		exists, err := kc.checkSvcExists(ctx, svcInfo)
+		if !exists {
+			errMsg := fmt.Sprint("service does not exist")
+			result := newRegistrationResult(svcInfo, uint32(404), errMsg)
+			return result, err
+		}
 	}
 	epClient := kc.Client.Endpoints(svcInfo.Namespace)
 	// let's see if we already have an Endpoints object for our service
@@ -310,7 +335,7 @@ func (kc *KubeClient) RegisterEndpoint(ctx context.Context, svcInfo *reg.Service
 
 	// Case #2: we have the current endpoints object for the service now
 	if err == nil {
-		return kc.AddSvcToEndpoint(ctx, epClient, ep, svcInfo)
+		return kc.AddSvcToEndpoint(ctx, epClient, ep, svcInfo, chkSvcExists)
 	}
 	// if we land here, some error happened when trying to get the endpoints object
 	return nil, err
@@ -324,7 +349,7 @@ func (kc *KubeClient) RegisterEndpoint(ctx context.Context, svcInfo *reg.Service
 // * an existing non-nil endpoints object ep is being passed in
 //
 // TODO: in a future refactoring, we might want to explore if we can benefit from this library: https://github.com/banzaicloud/k8s-objectmatcher
-func (kc *KubeClient) UnregisterWithEndpoint(ctx context.Context, epClient v1.EndpointsInterface, ep *apiv1.Endpoints, svcInfo *reg.ServiceInfo) (*reg.RegistrationResult, error) {
+func (kc *KubeClient) UnregisterWithEndpoint(ctx context.Context, epClient v1.EndpointsInterface, ep *apiv1.Endpoints, svcInfo *reg.ServiceInfo, chkSvcExists bool) (*reg.RegistrationResult, error) {
 	var result *reg.RegistrationResult = nil
 	var err error = nil
 	svcIP := svcInfo.Ipaddress
@@ -336,13 +361,14 @@ func (kc *KubeClient) UnregisterWithEndpoint(ctx context.Context, epClient v1.En
 		result := newRegistrationResult(svcInfo, uint32(500), errMsg)
 		return result, err
 	}
-	exists, err := kc.checkSvcExists(ctx, svcInfo)
-	if !exists {
-		errMsg := fmt.Sprint("service does not exist")
-		result := newRegistrationResult(svcInfo, uint32(404), errMsg)
-		return result, err
+	if chkSvcExists {
+		exists, err := kc.checkSvcExists(ctx, svcInfo)
+		if !exists {
+			errMsg := fmt.Sprint("service does not exist")
+			result := newRegistrationResult(svcInfo, uint32(404), errMsg)
+			return result, err
+		}
 	}
-
 	if epClient == nil {
 		epClient = kc.Client.Endpoints(svcInfo.Namespace)
 	}
@@ -402,9 +428,15 @@ func (kc *KubeClient) UnregisterWithEndpoint(ctx context.Context, epClient v1.En
 			statusCode := uint32(204)
 			statusDetails := "unregistered"
 			if err != nil {
-				klog.Errorf("unable to remove addresses from endpoints object - %s", err.Error())
-				statusCode = uint32(500)
-				statusDetails = "unable to unregister"
+				if k8serrors.IsConflict(err) {
+					klog.Warningf("conflict while updating resource - signaling to retry")
+					statusCode = uint32(409)
+					statusDetails = "conflict"
+				} else {
+					klog.Errorf("unable to remove addresses from endpoints object - %s", err.Error())
+					statusCode = uint32(500)
+					statusDetails = "unable to unregister"
+				}
 			}
 			result = newRegistrationResult(svcInfo, statusCode, statusDetails)
 			return result, err
@@ -424,15 +456,17 @@ func (kc *KubeClient) UnregisterWithEndpoint(ctx context.Context, epClient v1.En
 // * a headless service as provided in svcInfo.ServiceName exists
 //
 // TODO: in a future refactoring, we might want to explore if we can benefit from this library: https://github.com/banzaicloud/k8s-objectmatcher
-func (kc *KubeClient) UnregisterEndpoint(ctx context.Context, svcInfo *reg.ServiceInfo) (*reg.RegistrationResult, error) {
+func (kc *KubeClient) UnregisterEndpoint(ctx context.Context, svcInfo *reg.ServiceInfo, chkSvcExists bool) (*reg.RegistrationResult, error) {
 	var result *reg.RegistrationResult = nil
 	var err error = nil
 
-	exists, err := kc.checkSvcExists(ctx, svcInfo)
-	if !exists {
-		errMsg := fmt.Sprint("service does not exist")
-		result := newRegistrationResult(svcInfo, uint32(404), errMsg)
-		return result, err
+	if chkSvcExists {
+		exists, err := kc.checkSvcExists(ctx, svcInfo)
+		if !exists {
+			errMsg := fmt.Sprint("service does not exist")
+			result := newRegistrationResult(svcInfo, uint32(404), errMsg)
+			return result, err
+		}
 	}
 	epClient := kc.Client.Endpoints(svcInfo.Namespace)
 	// let's retrieve the Endpoints object for our service
@@ -448,7 +482,7 @@ func (kc *KubeClient) UnregisterEndpoint(ctx context.Context, svcInfo *reg.Servi
 	}
 
 	if err == nil {
-		return kc.UnregisterWithEndpoint(ctx, epClient, ep, svcInfo)
+		return kc.UnregisterWithEndpoint(ctx, epClient, ep, svcInfo, chkSvcExists)
 	}
 	return nil, err
 }

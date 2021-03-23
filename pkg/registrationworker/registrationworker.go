@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
+	"github.com/uromahn/k8s-svc-registry/api/registry"
 	kclient "github.com/uromahn/k8s-svc-registry/pkg/kubeclient"
 	servertypes "github.com/uromahn/k8s-svc-registry/pkg/servertypes"
 )
@@ -90,6 +91,7 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 	key := ns + "/" + svc
 	op := msg.Op
 	ctx := msg.Ctx
+	isRetry := msg.Retry
 
 	if klog.V(3).Enabled() {
 		klog.Info("doWork: retrieving Edpoints from cache")
@@ -113,12 +115,19 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 					}
 					respChan <- resultMsg
 					// we do not want to retry this operation, so return a nil error code
-					err = nil
+					return nil
 				} else {
 					if klog.V(3).Enabled() {
 						klog.Info("doWork: attempting to add new service to Endpoints")
 					}
-					result, err := w.k8sClient.AddSvcToEndpoint(ctx, nil, ep, svcInfo)
+					var result *registry.RegistrationResult
+					var err error
+					if isRetry {
+						// when doing a retry, we are reading the endpoints object directly from the API server
+						result, err = w.k8sClient.RegisterEndpoint(ctx, svcInfo, false)
+					} else {
+						result, err = w.k8sClient.AddSvcToEndpoint(ctx, nil, ep, svcInfo, false)
+					}
 					if err == nil {
 						resultMsg := servertypes.ResultMsg{
 							Result: result,
@@ -126,13 +135,21 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 						}
 						respChan <- resultMsg
 					}
+					var errMsg string
+					if err != nil {
+						errMsg = err.Error()
+					} else {
+						errMsg = "success"
+					}
+					klog.Infof("Request to register %v processed: result=%v, err=%s", svcInfo, result, errMsg)
+					return err
 				}
 			} else {
 				if klog.V(3).Enabled() {
 					klog.Info("doWork: Endpoints object does NOT exist in cache")
 					klog.Info("doWork: attempting to create new Endpoints with service")
 				}
-				result, err := w.k8sClient.CreateNewEndpoint(ctx, svcInfo)
+				result, err := w.k8sClient.CreateNewEndpoint(ctx, svcInfo, false)
 				if err == nil {
 					resultMsg := servertypes.ResultMsg{
 						Result: result,
@@ -140,6 +157,7 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 					}
 					respChan <- resultMsg
 				}
+				return err
 			}
 		} else if op == servertypes.Unregister {
 			if exists {
@@ -154,9 +172,16 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 					}
 					respChan <- resultMsg
 					// we do not want to retry this operation, so return a nil error code
-					err = nil
+					return nil
 				} else {
-					result, err := w.k8sClient.UnregisterWithEndpoint(ctx, nil, ep, svcInfo)
+					var result *registry.RegistrationResult
+					var err error
+					if isRetry {
+						// when doing a retry, we are reading the endpoints object directly from the API server
+						result, err = w.k8sClient.UnregisterEndpoint(ctx, svcInfo, false)
+					} else {
+						result, err = w.k8sClient.UnregisterWithEndpoint(ctx, nil, ep, svcInfo, false)
+					}
 					if err == nil {
 						resultMsg := servertypes.ResultMsg{
 							Result: result,
@@ -164,6 +189,14 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 						}
 						respChan <- resultMsg
 					}
+					var errMsg string
+					if err != nil {
+						errMsg = err.Error()
+					} else {
+						errMsg = "success"
+					}
+					klog.Infof("Request to unregister %v processed: result=%v, err=%s", svcInfo, result, errMsg)
+					return err
 				}
 			} else {
 				errMsg := fmt.Sprintf("Can't unregister endpoint %s:%s for %s - endpoints object does not exist", msg.SvcInfo.HostName, msg.SvcInfo.Ipaddress, key)
@@ -175,7 +208,7 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 				}
 				respChan <- resultMsg
 				// we do not want to retry this operation, so return a nil error code
-				err = nil
+				return nil
 			}
 		} else {
 			// we have an unknown operation, error out here
@@ -188,7 +221,7 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 			}
 			respChan <- resultMsg
 			// we do not want to retry this operation, so return a nil error code
-			err = nil
+			return nil
 		}
 	} else {
 		errMsg := fmt.Sprintf("Fetching endpoints '%s' from cache failed with error %s", key, err.Error())
@@ -200,12 +233,18 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 		}
 		respChan <- resultMsg
 		// we do not want to retry this operation, so return a nil error code
-		err = nil
+		return nil
 	}
-	return err
 }
 
 func (w *Worker) handleError(err error, msg servertypes.RegistrationMsg) {
+	var errMsg string
+	if err == nil {
+		errMsg = "no error"
+	} else {
+		errMsg = err.Error()
+	}
+	klog.Infof("handleError called with err=%s, msg=%v", errMsg, msg)
 	if err == nil {
 		// Forget about the #AddRateLimited history of the msg on every successful synchronization.
 		// This ensures that future processing of this msg is not delayed because of
@@ -218,6 +257,8 @@ func (w *Worker) handleError(err error, msg servertypes.RegistrationMsg) {
 	if w.queue.NumRequeues(msg) < 5 {
 		klog.Infof("Error processing registration requuest %v: %v", msg, err)
 
+		// this will be a retry, so set the Retry flag to true
+		msg.Retry = true
 		// Re-enqueue the message rate limited. Based on the rate limiter on the
 		// queue and the re-enqueue history, the message will be processed later again.
 		w.queue.AddRateLimited(msg)

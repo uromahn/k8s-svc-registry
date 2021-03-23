@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"time"
 
 	"k8s.io/klog/v2"
 
 	reg "github.com/uromahn/k8s-svc-registry/api/registry"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/homedir"
@@ -26,6 +28,16 @@ const (
 	port            = ":9080"
 	defaultLogLevel = "2"
 )
+
+var kaep = keepalive.EnforcementPolicy{
+	MinTime:             1 * time.Second, // If a client pings more than once every 1 second, terminate the connection
+	PermitWithoutStream: true,            // Allow pings even when there are no active streams
+}
+
+var kasp = keepalive.ServerParameters{
+	Time:    1 * time.Second, // Ping the client if it is idle for 1 second to ensure the connection is still active
+	Timeout: 1 * time.Second, // Wait 1 second for the ping ack before assuming the connection is dead
+}
 
 var registrationQueue workqueue.RateLimitingInterface
 
@@ -75,7 +87,7 @@ func main() {
 		if err != nil {
 			klog.Fatalf("failed to listen : %v", err)
 		}
-		s := grpc.NewServer()
+		s := grpc.NewServer(grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp))
 		reg.RegisterServiceRegistryServer(s, &registry.ServiceRegistryServer{})
 		if err := s.Serve(lis); err != nil {
 			klog.Fatalf("failed to serve: %v", err)
