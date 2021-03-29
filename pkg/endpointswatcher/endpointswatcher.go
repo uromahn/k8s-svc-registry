@@ -42,13 +42,19 @@ func CreateIndexInformer(k8sClient *kclient.KubeClient) *cache.SharedIndexInform
 	sharedIndexInformer.AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
-				klog.Info("endpoints added")
+				if klog.V(3).Enabled() {
+					klog.Info("endpoints added")
+				}
 			},
 			DeleteFunc: func(obj interface{}) {
-				klog.Info("endpoints deleted")
+				if klog.V(3).Enabled() {
+					klog.Info("endpoints deleted")
+				}
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
-				klog.Info("endpoints changed")
+				if klog.V(3).Enabled() {
+					klog.Info("endpoints changed")
+				}
 			},
 		},
 	)

@@ -141,7 +141,9 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 					} else {
 						errMsg = "success"
 					}
-					klog.Infof("Request to register %v processed: result=%v, err=%s", svcInfo, result, errMsg)
+					if klog.V(3).Enabled() {
+						klog.Infof("Request to register %v processed: result=%v, err=%s", svcInfo, result, errMsg)
+					}
 					return err
 				}
 			} else {
@@ -195,7 +197,9 @@ func (w *Worker) doWork(msg servertypes.RegistrationMsg) error {
 					} else {
 						errMsg = "success"
 					}
-					klog.Infof("Request to unregister %v processed: result=%v, err=%s", svcInfo, result, errMsg)
+					if klog.V(3).Enabled() {
+						klog.Infof("Request to unregister %v processed: result=%v, err=%s", svcInfo, result, errMsg)
+					}
 					return err
 				}
 			} else {
@@ -244,7 +248,9 @@ func (w *Worker) handleError(err error, msg servertypes.RegistrationMsg) {
 	} else {
 		errMsg = err.Error()
 	}
-	klog.Infof("handleError called with err=%s, msg=%v", errMsg, msg)
+	if klog.V(3).Enabled() {
+		klog.Infof("handleError called with err=%s, msg=%v", errMsg, msg)
+	}
 	if err == nil {
 		// Forget about the #AddRateLimited history of the msg on every successful synchronization.
 		// This ensures that future processing of this msg is not delayed because of
@@ -255,8 +261,9 @@ func (w *Worker) handleError(err error, msg servertypes.RegistrationMsg) {
 
 	// This worker retries 5 times if something goes wrong. After that, it stops trying.
 	if w.queue.NumRequeues(msg) < 5 {
-		klog.Infof("Error processing registration requuest %v: %v", msg, err)
-
+		if klog.V(3).Enabled() {
+			klog.Infof("Error processing registration request %v: %v", msg, err)
+		}
 		// this will be a retry, so set the Retry flag to true
 		msg.Retry = true
 		// Re-enqueue the message rate limited. Based on the rate limiter on the
