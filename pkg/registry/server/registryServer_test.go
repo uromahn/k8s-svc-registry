@@ -163,19 +163,18 @@ var tests = []struct {
 	objs           []runtime.Object
 }{
 	{
-		"no ns - no service",
-		nsName,
-		svcInfo,
-		fmt.Errorf("rpc error: code = Unknown desc = namepace %s does not exist", nsName),
-		&reg.RegistrationResult{},
-		[]runtime.Object{emptyNs, emptySvc},
-	},
-	{
 		"with ns - no service",
 		nsName,
 		svcInfo,
-		fmt.Errorf("rpc error: code = Unknown desc = service %s in namespace %s does not exist", svcName, nsName),
-		&reg.RegistrationResult{},
+		nil,
+		&reg.RegistrationResult{
+			Namespace:     nsName,
+			ServiceName:   svcName,
+			Ipaddress:     ipAddr,
+			Ports:         namedPorts,
+			Status:        200,
+			StatusDetails: "registered",
+		},
 		[]runtime.Object{testNs, emptySvc},
 	},
 	{
@@ -266,7 +265,7 @@ func TestRegister(t *testing.T) {
 				}
 				if err == nil {
 					if !compareResults(*actualResult, *test.expectedResult) {
-						t.Errorf("Expected result differs (got, want): (%v, %v)", actualResult, test.expectedResult)
+						t.Errorf("Expected result differs (got, want): ({%v}, {%v})", actualResult, test.expectedResult)
 						return
 					}
 					t.Logf("actual result = %v", actualResult)
