@@ -28,6 +28,25 @@ var kacp = keepalive.ClientParameters{
 	PermitWithoutStream: true,            // send pings even without active streams
 }
 
+/*
+   =================================================================================
+   This is just a simple test client. The actual client should do the following:
+   - a go func that implements a health-check against an endpoint. It should support
+     the following health-checks:
+	 - tcp-check: will attempt to open a socket:port and if it succeeds will close
+	   the socket again and report success
+	 - http-check: will attempt to issue a HTTP GET request against a supplied URL.
+	   The health-check is considered successful if the response is a non 5xx code.
+	 - future expansion: Unix domain socket check. This assumes that the server
+	   implements a health endpoint and exposes it as a Unix domain socket.
+	   The request will be a text command "ping" and the response is expected to be
+	   "pong".
+   - a pool of go functions with one to many gRPC clients connecting to one or many
+     registration services.
+   - the client will be configured using a YAML or JSON file with a specific set
+     of configuration data which will be TBD.
+   =================================================================================
+*/
 func main() {
 	flag.Parse()
 	// Set up a connection to the server.
