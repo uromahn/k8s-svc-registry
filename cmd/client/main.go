@@ -33,10 +33,12 @@ var kacp = keepalive.ClientParameters{
    This is just a simple test client. The actual client should do the following:
    - a go func that implements a health-check against an endpoint. It should support
      the following health-checks:
-	 - tcp-check: will attempt to open a socket:port and if it succeeds will close
+	 - tcp-check: will attempt to open a socket on ip-address:port and if it succeeds will close
 	   the socket again and report success
 	 - http-check: will attempt to issue a HTTP GET request against a supplied URL.
 	   The health-check is considered successful if the response is a non 5xx code.
+	 - file-check: will check for the presence of a file.
+	   The health-check is considered successful if the file exists.
 	 - future expansion: Unix domain socket check. This assumes that the server
 	   implements a health endpoint and exposes it as a Unix domain socket.
 	   The request will be a text command "ping" and the response is expected to be

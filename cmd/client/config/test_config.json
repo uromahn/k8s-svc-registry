@@ -1,0 +1,22 @@
+{
+    "instance_id": "registry-client_1",
+    "services": {
+        "test-service": {
+            "host": "localhost",
+            "port": 123,
+            "registries": [
+                "http://registry.cluster.local"
+            ],
+            "check_interval_ms": 500,
+            "checks": [
+                {
+                    "type": "http",
+                    "uri": "http://localhost:80/healthz",
+                    "timeout_ms": 50,
+                    "rise": 2,
+                    "fall": 1
+                }
+            ]
+        }
+    }
+}

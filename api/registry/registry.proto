@@ -25,7 +25,7 @@ message NamedPort {
 message ServiceInfo {
     // namespace the service is registered in
     string namespace = 1;
-    // name of the service - this determines which namespace this service uses
+    // name of the service - this is used as the name of the K8s service and endpoints object
     string service_name = 2;
     // DNS name of the service host not including subdomain or domain and no dots
     string host_name = 3;

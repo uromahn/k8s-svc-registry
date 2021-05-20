@@ -94,7 +94,7 @@ type ServiceInfo struct {
 
 	// namespace the service is registered in
 	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	// name of the service - this determines which namespace this service uses
+	// name of the service - this is used as the name of the K8s service and endpoints object
 	ServiceName string `protobuf:"bytes,2,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
 	// DNS name of the service host not including subdomain or domain and no dots
 	HostName string `protobuf:"bytes,3,opt,name=host_name,json=hostName,proto3" json:"host_name,omitempty"`
