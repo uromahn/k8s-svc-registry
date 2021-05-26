@@ -93,6 +93,14 @@ var DefaultService Service = Service{
 	Checks:          &DefaultChecks,
 }
 
+var EmptyService Service = Service{
+	Host:            nil,
+	Port:            nil,
+	Registries:      nil,
+	CheckIntervalMs: nil,
+	Checks:          nil,
+}
+
 var DefaultConfig Config = Config{
 	InstanceId:     StringP(""),
 	ServiceConfDir: nil,
