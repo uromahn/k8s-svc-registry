@@ -103,7 +103,7 @@ func parseAndAddServicesFromFile(config *Config) error {
 
 func readAndParseServiceFromFile(serviceFilePath string) (*Service, error) {
 	if len(strings.TrimSpace(serviceFilePath)) == 0 {
-		err := fmt.Errorf("Got filename with zero length!")
+		err := fmt.Errorf("got filename with zero length")
 		klog.Error(err.Error())
 		return nil, err
 	}
