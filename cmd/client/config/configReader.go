@@ -83,7 +83,7 @@ func parseAndAddServicesFromFile(config *Config) error {
 	// now we need to look over all the files we found, read their content and parse it into JSON
 	for _, serviceFilePath := range serviceConfigFiles {
 		service, err := readAndParseServiceFromFile(serviceFilePath)
-		if err != nil {
+		if err == nil {
 			// use the pure filename as service name
 			serviceFileName := filepath.Base(serviceFilePath)
 			serviceName := strings.TrimSuffix(serviceFileName, filepath.Ext(serviceFileName))
