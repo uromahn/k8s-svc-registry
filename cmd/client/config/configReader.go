@@ -16,24 +16,11 @@ const (
 )
 
 func ReadConfig(configFilePath string) (*Config, error) {
-	if len(strings.TrimSpace(configFilePath)) == 0 {
-		configFilePath = defaultPath
-	}
-	klog.Infof("Opening config file %s", configFilePath)
-	configFile, err := os.Open(configFilePath)
-	if err != nil {
-		klog.Errorf("Error while opening config file %s: %s", configFilePath, err.Error())
-		return nil, err
-	}
-
-	defer configFile.Close()
-
-	jsonBytes, err := ioutil.ReadAll(configFile)
+	jsonBytes, err := readBytesFromFile(configFilePath)
 	if err != nil {
 		klog.Errorf("Error reading file %s: %s", configFilePath, err.Error())
 		return nil, err
 	}
-	klog.Infof("Config file read with %d bytes", len(jsonBytes))
 
 	var config Config = DefaultConfig
 	err = json.Unmarshal(jsonBytes, &config)
@@ -102,25 +89,11 @@ func parseAndAddServicesFromFile(config *Config) error {
 }
 
 func readAndParseServiceFromFile(serviceFilePath string) (*Service, error) {
-	if len(strings.TrimSpace(serviceFilePath)) == 0 {
-		err := fmt.Errorf("got filename with zero length")
-		klog.Error(err.Error())
-		return nil, err
-	}
-	serviceFile, err := os.Open(serviceFilePath)
-
-	if err != nil {
-		klog.Errorf("Error while opening service file %s: %s", serviceFilePath, err.Error())
-		return nil, err
-	}
-
-	defer serviceFile.Close()
-	jsonBytes, err := ioutil.ReadAll(serviceFile)
+	jsonBytes, err := readBytesFromFile(serviceFilePath)
 	if err != nil {
 		klog.Errorf("Error reading file %s: %s", serviceFilePath, err.Error())
 		return nil, err
 	}
-	klog.Infof("Config file read with %d bytes", len(jsonBytes))
 
 	var service Service = EmptyService
 	err = json.Unmarshal(jsonBytes, &service)
@@ -129,4 +102,26 @@ func readAndParseServiceFromFile(serviceFilePath string) (*Service, error) {
 		return nil, err
 	}
 	return &service, nil
+}
+
+func readBytesFromFile(filePath string) ([]byte, error) {
+	if len(strings.TrimSpace(filePath)) == 0 {
+		err := fmt.Errorf("got path and filename with zero length")
+		klog.Error(err.Error())
+		return nil, err
+	}
+	file, err := os.Open(filePath)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer file.Close()
+	bytes, err := ioutil.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+	klog.Infof("File %s read with %d bytes", filePath, len(bytes))
+
+	return bytes, nil
 }
